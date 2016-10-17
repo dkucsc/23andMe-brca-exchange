@@ -15,4 +15,4 @@ You'll then be prompted for your `client_secret`, which you should enter.
 
 If all goes well, the server will be listening on http://localhost:5000, and you can go ahead and visit it.
 
-This repository has some modifications (from https://github.com/23andMe/api-example-flask) to include the branded button recommended [here](https://api.23andme.com/docs/jslib).
+This repository has some [modifications](https://github.com/23andMe/api-example-flask) to include the official 23andMe [branded button](https://api.23andme.com/docs/jslib).
