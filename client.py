@@ -166,7 +166,6 @@ def app2():
         print(basic_response)
     else:
         basic_response.raise_for_status()
-
     if genotype_response.status_code == 200:
         if 'code' in request.args.to_dict():
             code = request.args.to_dict()['code']
