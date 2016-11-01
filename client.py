@@ -112,6 +112,13 @@ def demo():
     to demo the application, without logging in to 23andMe.
 
     This doesn't actually work yet, but should work later."""
+    basic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/user/"),
+                                    verify=False)
+    basic_request_success = False
+    if basic_response.status_code == 200:
+        basic_request_success = True
+    return flask.render_template('demo.html', home_url=BASE_CLIENT_URL,
+        basic_request_success=basic_request_success)
 
 
 @app.route('/')
@@ -121,8 +128,6 @@ def index():
     ttam_oauth = OAuth2Session(client_id, redirect_uri=redirect_uri,
                                scope=scopes)
     auth_url, state = ttam_oauth.authorization_url(API_AUTH_URL)
-    print("Authentication URL: %s" % auth_url)
-    print("State: %s" % state)
     demo_url = "http://localhost:5000/demo/"
     return flask.render_template('index.html', auth_url=auth_url,
         page_header=PAGE_HEADER, page_title=PAGE_HEADER, client_id=client_id,
@@ -170,7 +175,6 @@ def _ga4gh_queries():
         #reference_name="1", start=45000, end=50000)
         reference_name="13", start=32315650, end=32315660)
     results = list()
-    import ipdb;ipdb.set_trace()
     for variant in iterator:
         r = (variant.reference_name, variant.start, variant.end,\
             variant.reference_bases, variant.alternate_bases)
@@ -185,12 +189,10 @@ def app2():
     genotype_response, basic_response = _23andMe_queries(client_id, client_secret, redirect_uri)
     results = _ga4gh_queries()
 
-    for v in results:
-        print(v)
-
     # Process the data.
+    basic_request_success = False
     if basic_response.status_code == 200:
-        print(basic_response)
+        basic_request_success = True
     else:
         basic_response.raise_for_status()
     if genotype_response.status_code == 200:
@@ -201,7 +203,7 @@ def app2():
         return flask.render_template('app.html', page_header=PAGE_HEADER,
             response_json=genotype_response.json(), home_url=BASE_CLIENT_URL,
             page_title=PAGE_HEADER, client_id=client_id, code=code,
-            ga4gh_results=results)
+            ga4gh_results=results, basic_request_success=basic_request_success)
     else:
         genotype_response.raise_for_status()
 
