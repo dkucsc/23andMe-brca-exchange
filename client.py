@@ -21,7 +21,7 @@ PAGE_HEADER = "23andMe + GA4GH"
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = '1'
 
 # Pass in more scopes through the command line, or change these.
-DEFAULT_SNPS = ['rs12913832', 'rs3088053', 'rs1000068']
+DEFAULT_SNPS = ['rs12913832', 'rs3088053', 'rs1000068', 'rs206118', 'rs206115']
 DEFAULT_SCOPES = ['names', 'basic'] + DEFAULT_SNPS
 
 # The program will ask for a client_secret if you choose to not hardcode one
@@ -78,6 +78,42 @@ if not client_secret:
 app = flask.Flask(__name__)
 
 
+@app.route('/variants/search/')
+def search_variants():
+    # flaskrequest # search variants request
+    # use variant_set_id=brca-hg37 because .data is in that
+    # pass all the arguments to the ga4gh client
+    # send to brca exchange server
+
+    # response from brca exchange
+    # each variant will have variant.start, variant.end, variant.reference_name
+    # look up the variants by position and chromosome in the snp.data file
+
+    # construct a 23andme request using the rs identifier found in the data file
+    # add the 23andme metadata into the variant.info
+
+    # reassemble response, change variants in place?
+    # return ga4gh response, "hydrated" brca response
+
+    # Enter login credentials
+    # Load empty table
+    # Request first range
+    # Add to table... iteratively
+
+    # multiple profiles on demo account, just choose first?
+    # TODO Render multiple profiles
+    # Can select profile with /demo/genotypes/PROFILE_ID
+    pass
+
+
+@app.route('/demo/')
+def demo():
+    """This is the view responsible for handling the case where the user wants
+    to demo the application, without logging in to 23andMe.
+
+    This doesn't actually work yet, but should work later."""
+
+
 @app.route('/')
 def index():
     """Here, we authenticate the user before transitioning to the app.  There
@@ -91,28 +127,6 @@ def index():
     return flask.render_template('index.html', auth_url=auth_url,
         page_header=PAGE_HEADER, page_title=PAGE_HEADER, client_id=client_id,
         demo_url=demo_url)
-
-
-@app.route('/demo/')
-def demo():
-    """This is the view responsible for handling the case where the user wants
-    to demo the application, without logging in to 23andMe."""
-    genotype_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/genotype/"),
-                                     params={'locations': ' '.join(DEFAULT_SNPS)},
-                                     verify=False)
-    basic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/user/"),
-                                     verify=False)
-    if basic_response.status_code == 200:
-        print(basic_response)
-    else:
-        basic_response.raise_for_status()
-
-    if genotype_response.status_code == 200:
-        return flask.render_template('app.html', page_header=PAGE_HEADER,
-            response_json=genotype_response.json(), home_url=BASE_CLIENT_URL,
-            page_title=PAGE_HEADER, client_id=client_id)
-    else:
-        genotype_response.raise_for_status()
 
 
 def _23andMe_queries(client_id, client_secret, redirect_uri):
@@ -151,13 +165,16 @@ def _ga4gh_queries():
         httpClient = g4client.HttpClient(API_SERVER_GA4GH)
     datasets = list(httpClient.search_datasets())
     variant_sets = list(httpClient.search_variant_sets(dataset_id=datasets[0].id))
-    iterator = httpClient.search_variants(variant_set_id=variant_sets[0].id,
-        reference_name="1", start=45000, end=50000)
-    results = set()
+    #iterator = httpClient.search_variants(variant_set_id=variant_sets[0].id,
+    iterator = httpClient.search_variants(variant_set_id='brca-hg38',
+        #reference_name="1", start=45000, end=50000)
+        reference_name="13", start=32315650, end=32315660)
+    results = list()
+    import ipdb;ipdb.set_trace()
     for variant in iterator:
         r = (variant.reference_name, variant.start, variant.end,\
             variant.reference_bases, variant.alternate_bases)
-        results.add(r)
+        results.append(r)
     return results
 
 @app.route('/app/')
@@ -171,6 +188,7 @@ def app2():
     for v in results:
         print(v)
 
+    # Process the data.
     if basic_response.status_code == 200:
         print(basic_response)
     else:
@@ -189,5 +207,4 @@ def app2():
 
 
 if __name__ == '__main__':
-    print "A local client for the Personal Genome API is now initialized."
     app.run(debug=DEBUG, port=PORT)
