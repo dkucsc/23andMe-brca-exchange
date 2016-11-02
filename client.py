@@ -16,6 +16,7 @@ API_SERVER = 'api.23andme.com'
 BASE_CLIENT_URL = 'http://localhost:%s/' % PORT
 DEFAULT_REDIRECT_URI = '%sapp/' % BASE_CLIENT_URL
 PAGE_HEADER = "23andMe + GA4GH"
+access_token = None
 
 # So we don't get errors if the redirect uri is not https.
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = '1'
@@ -106,21 +107,6 @@ def search_variants():
     pass
 
 
-@app.route('/demo/')
-def demo():
-    """This is the view responsible for handling the case where the user wants
-    to demo the application, without logging in to 23andMe.
-
-    This doesn't actually work yet, but should work later."""
-    basic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/user/"),
-                                    verify=False)
-    basic_request_success = False
-    if basic_response.status_code == 200:
-        basic_request_success = True
-    return flask.render_template('demo.html', home_url=BASE_CLIENT_URL,
-        basic_request_success=basic_request_success)
-
-
 @app.route('/')
 def index():
     """Here, we authenticate the user before transitioning to the app.  There
@@ -128,21 +114,20 @@ def index():
     ttam_oauth = OAuth2Session(client_id, redirect_uri=redirect_uri,
                                scope=scopes)
     auth_url, state = ttam_oauth.authorization_url(API_AUTH_URL)
-    demo_url = "http://localhost:5000/demo/"
     return flask.render_template('index.html', auth_url=auth_url,
-        page_header=PAGE_HEADER, page_title=PAGE_HEADER, client_id=client_id,
-        demo_url=demo_url)
+        page_header=PAGE_HEADER, page_title=PAGE_HEADER, client_id=client_id)
 
 
 def _23andMe_queries(client_id, client_secret, redirect_uri):
     """Handles interaction with the 23andMe API.  Returns the data."""
-    # Hit the /token endpoint to get the access_token.
-    ttam_oauth = OAuth2Session(client_id, redirect_uri=redirect_uri)
-    token_dict = ttam_oauth.fetch_token(API_TOKEN_URL,
-                                        client_secret=client_secret,
-                                        authorization_response=request.url)
+    global access_token
+    if not access_token:
+        ttam_oauth = OAuth2Session(client_id, redirect_uri=redirect_uri)
+        token_dict = ttam_oauth.fetch_token(API_TOKEN_URL,
+                                            client_secret=client_secret,
+                                            authorization_response=request.url)
 
-    access_token = token_dict['access_token']
+        access_token = token_dict['access_token']
 
     headers = {'Authorization': 'Bearer %s' % access_token}
 
@@ -150,17 +135,16 @@ def _23andMe_queries(client_id, client_secret, redirect_uri):
                                     params={'locations': ' '.join(DEFAULT_SNPS)},
                                     headers=headers,
                                     verify=False)
-    basic_response = requests.get("%s%s" % (BASE_API_URL, "/1/user/"),
+    user_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/user/"),
                                     headers=headers,
                                     verify=False)
-    #names_response = requests.get("%s%s" % (BASE_API_URL, "/1/names/"),
-    #                                 headers=headers,
-    #                                 verify=False)
-    #if names_response.status_code == 200:
-    #    print(names_response)
-    #else:
-    #    names_response.raise_for_status()
-    return genotype_response, basic_response
+    names_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/names/"),
+                                     headers=headers,
+                                     verify=False)
+    profilepic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/profile_picture/"),
+                                     headers=headers,
+                                     verify=False)
+    return genotype_response, user_response, names_response, profilepic_response
 
 def _ga4gh_queries():
     """Performs queries against the GA4GH server."""
@@ -186,24 +170,34 @@ def app2():
     """Represents our application, which makes use of 2 APIs: 23andMe, and
     BRCA Exchange (via GA4GH)."""
     # Query the 2 APIs and get data responses.
-    genotype_response, basic_response = _23andMe_queries(client_id, client_secret, redirect_uri)
+    genotype_response, user_response, names_response, profilepic_response = _23andMe_queries(client_id, client_secret, redirect_uri)
     results = _ga4gh_queries()
 
     # Process the data.
-    basic_request_success = False
-    if basic_response.status_code == 200:
-        basic_request_success = True
-    else:
-        basic_response.raise_for_status()
+    user_request_success = False
+    if user_response.status_code == 200:
+        user_request_success = True
+    names_request_success = False
+    if names_response.status_code == 200:
+        names_request_success = True
+    profilepic_request_success = False
+    if profilepic_response.status_code == 200:
+        profilepic_request_success = True
+
     if genotype_response.status_code == 200:
         if 'code' in request.args.to_dict():
             code = request.args.to_dict()['code']
         else:
             code = None
         return flask.render_template('app.html', page_header=PAGE_HEADER,
-            response_json=genotype_response.json(), home_url=BASE_CLIENT_URL,
+            genotype_response_json=genotype_response.json(),
+            home_url=BASE_CLIENT_URL,
+            user_response_json=user_response.json(),
+            names_response_json=names_response.json(),
             page_title=PAGE_HEADER, client_id=client_id, code=code,
-            ga4gh_results=results, basic_request_success=basic_request_success)
+            ga4gh_results=results, user_request_success=user_request_success,
+            names_request_success=names_request_success,
+            profilepic_request_success=profilepic_request_success)
     else:
         genotype_response.raise_for_status()
 
