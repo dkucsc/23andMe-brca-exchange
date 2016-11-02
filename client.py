@@ -184,6 +184,15 @@ def app2():
     if profilepic_response.status_code == 200:
         profilepic_request_success = True
 
+    if 'first_name' in names_response.json():
+        account_first_name = names_response.json()['first_name']
+    else:
+        account_first_name = "first"
+    if 'last_name' in names_response.json():
+        account_last_name = names_response.json()['last_name']
+    else:
+        account_last_name = "last"
+
     if genotype_response.status_code == 200:
         if 'code' in request.args.to_dict():
             code = request.args.to_dict()['code']
@@ -197,7 +206,9 @@ def app2():
             page_title=PAGE_HEADER, client_id=client_id, code=code,
             ga4gh_results=results, user_request_success=user_request_success,
             names_request_success=names_request_success,
-            profilepic_request_success=profilepic_request_success)
+            profilepic_request_success=profilepic_request_success,
+            account_first_name=account_first_name,
+            account_last_name=account_last_name)
     else:
         genotype_response.raise_for_status()
 
