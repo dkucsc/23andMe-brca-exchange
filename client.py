@@ -16,6 +16,7 @@ API_SERVER = 'api.23andme.com'
 BASE_CLIENT_URL = 'http://localhost:%s/' % PORT
 DEFAULT_REDIRECT_URI = '%sapp/' % BASE_CLIENT_URL
 PAGE_HEADER = "23andMe + GA4GH"
+REFERENCE_NAMES = [str(x) for x in range(1, 23)] + ['X', 'Y', 'MT']
 access_token = None
 
 # So we don't get errors if the redirect uri is not https.
@@ -118,7 +119,17 @@ def index():
         page_header=PAGE_HEADER, page_title=PAGE_HEADER, client_id=client_id)
 
 
-def _23andMe_queries(client_id, client_secret, redirect_uri):
+def _compute_locations(g):
+    """Computes a more reasonable list of SNPs than the DEFAULT_SNPS above."""
+    return DEFAULT_SNPS
+    with open("snps.b4e00fe1db50.data", 'r') as fh:
+        for l in fh:
+            m = re.match(r'^((\d+)\w+(\.+)\w+(\.+)\w+(.+)$', l)
+            if m:
+                index, snp, ch, p = m.groups()
+
+
+def _23andMe_queries(client_id, client_secret, redirect_uri, g4results):
     """Handles interaction with the 23andMe API.  Returns the data."""
     global access_token
     if not access_token:
@@ -131,6 +142,7 @@ def _23andMe_queries(client_id, client_secret, redirect_uri):
 
     headers = {'Authorization': 'Bearer %s' % access_token}
 
+    locations = _compute_locations(g4results)
     genotype_response = requests.get("%s%s" % (BASE_API_URL, "/1/genotype/"),
                                     params={'locations': ' '.join(DEFAULT_SNPS)},
                                     headers=headers,
@@ -153,16 +165,19 @@ def _ga4gh_queries():
     else:
         httpClient = g4client.HttpClient(API_SERVER_GA4GH)
     datasets = list(httpClient.search_datasets())
-    variant_sets = list(httpClient.search_variant_sets(dataset_id=datasets[0].id))
-    #iterator = httpClient.search_variants(variant_set_id=variant_sets[0].id,
-    iterator = httpClient.search_variants(variant_set_id='brca-hg38',
-        #reference_name="1", start=45000, end=50000)
-        reference_name="13", start=32315650, end=32315660)
     results = list()
-    for variant in iterator:
-        r = (variant.reference_name, variant.start, variant.end,\
-            variant.reference_bases, variant.alternate_bases)
-        results.append(r)
+    for dataset in datasets:
+        variant_sets = list(httpClient.search_variant_sets(dataset_id=dataset.id))
+        for variant_set in variant_sets:
+            for reference_name in REFERENCE_NAMES:
+                iterator = httpClient.search_variants(variant_set_id=variant_set.id,
+                #iterator = httpClient.search_variants(variant_set_id='brca-hg38',
+                    reference_name=reference_name, start=45000, end=50000)
+                    #reference_name="13", start=32315650, end=32315660)
+                for variant in iterator:
+                    r = (variant.reference_name, variant.start, variant.end,\
+                        variant.reference_bases, variant.alternate_bases)
+                    results.append(r)
     return results
 
 @app.route('/app/')
@@ -170,8 +185,8 @@ def app2():
     """Represents our application, which makes use of 2 APIs: 23andMe, and
     BRCA Exchange (via GA4GH)."""
     # Query the 2 APIs and get data responses.
-    genotype_response, user_response, names_response, profilepic_response = _23andMe_queries(client_id, client_secret, redirect_uri)
-    results = _ga4gh_queries()
+    g4results = _ga4gh_queries()
+    genotype_response, user_response, names_response, profilepic_response = _23andMe_queries(client_id, client_secret, redirect_uri, g4results)
 
     # Process the data.
     user_request_success = False
@@ -204,7 +219,7 @@ def app2():
             user_response_json=user_response.json(),
             names_response_json=names_response.json(),
             page_title=PAGE_HEADER, client_id=client_id, code=code,
-            ga4gh_results=results, user_request_success=user_request_success,
+            g4results=g4results, user_request_success=user_request_success,
             names_request_success=names_request_success,
             profilepic_request_success=profilepic_request_success,
             account_first_name=account_first_name,
