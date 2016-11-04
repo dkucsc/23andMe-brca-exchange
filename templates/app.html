@@ -8,6 +8,9 @@
     <p>Genotype request: {{genotype_request_success}}
     <p>Names request: {{names_request_success}}
     <p>Profile picture request: {{profilepic_request_success}}
+    <p>Neanderthal request: {{neanderthal_request_success}}
+    <p>Relatives request: {{relatives_request_success}}
+    <p>Family members request: {{family_request_success}}
     <table border=1>
         <tr>
             <th scope='col'>profile id</th>
@@ -18,12 +21,18 @@
             <td>{{p}}</td>
         </tr>
         {% endfor %}
+        <tr>
+            <th colspan=2>genotype response</td>
+        </tr>
         {% for p in genotype_response_json %}
         <tr>
             <td>cat: {{p.id}}</td>
             <td>dog: {{p.rs12913832}}</td>
         </tr>
         {% endfor %}
+        <tr>
+            <th colspan=2>names response</td>
+        </tr>
         {% for k, v in names_response_json.iteritems()  %}
         <tr>
             <td>{{k}}</td>

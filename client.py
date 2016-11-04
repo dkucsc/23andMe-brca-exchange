@@ -9,6 +9,7 @@ from flask import request
 from requests_oauthlib import OAuth2Session
 
 import ga4gh.client as g4client
+from ga4gh.exceptions import RequestNonSuccessException
 
 
 PORT = 5000
@@ -16,7 +17,8 @@ API_SERVER = 'api.23andme.com'
 BASE_CLIENT_URL = 'http://localhost:%s/' % PORT
 DEFAULT_REDIRECT_URI = '%sapp/' % BASE_CLIENT_URL
 PAGE_HEADER = "23andMe + GA4GH"
-REFERENCE_NAMES = [str(x) for x in range(1, 23)] + ['X', 'Y', 'MT']
+#REFERENCE_NAMES = [str(x) for x in range(1, 23)] + ['X', 'Y', 'MT']
+REFERENCE_NAMES = ["13", "17"]
 access_token = None
 
 # So we don't get errors if the redirect uri is not https.
@@ -122,6 +124,7 @@ def index():
 def _compute_locations(g):
     """Computes a more reasonable list of SNPs than the DEFAULT_SNPS above."""
     return DEFAULT_SNPS
+    result = []
     with open("snps.b4e00fe1db50.data", 'r') as fh:
         for l in fh:
             m = re.match(r'^((\d+)\w+(\.+)\w+(\.+)\w+(.+)$', l)
@@ -151,12 +154,21 @@ def _23andMe_queries(client_id, client_secret, redirect_uri, g4results):
                                     headers=headers,
                                     verify=False)
     names_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/names/"),
-                                     headers=headers,
-                                     verify=False)
+                                    headers=headers,
+                                    verify=False)
     profilepic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/profile_picture/"),
-                                     headers=headers,
-                                     verify=False)
-    return genotype_response, user_response, names_response, profilepic_response
+                                    headers=headers,
+                                    verify=False)
+    family_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/family_members/"),
+                                    headers=headers,
+                                    verify=False)
+    neanderthal_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/neanderthal/"),
+                                    headers=headers,
+                                    verify=False)
+    relatives_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/relatives/"),
+                                    headers=headers,
+                                    verify=False)
+    return genotype_response, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response
 
 def _ga4gh_queries():
     """Performs queries against the GA4GH server."""
@@ -164,20 +176,30 @@ def _ga4gh_queries():
         httpClient = g4client.HttpClient(API_SERVER_GA4GH, logLevel=logging.DEBUG)
     else:
         httpClient = g4client.HttpClient(API_SERVER_GA4GH)
+    # There is currently only 1 dataset available in BRCA, but we'll be robust
+    # and iterate as if there were more.
     datasets = list(httpClient.search_datasets())
     results = list()
     for dataset in datasets:
+        # There should be 3 variant sets.
         variant_sets = list(httpClient.search_variant_sets(dataset_id=dataset.id))
-        for variant_set in variant_sets:
-            for reference_name in REFERENCE_NAMES:
-                iterator = httpClient.search_variants(variant_set_id=variant_set.id,
-                #iterator = httpClient.search_variants(variant_set_id='brca-hg38',
-                    reference_name=reference_name, start=45000, end=50000)
-                    #reference_name="13", start=32315650, end=32315660)
-                for variant in iterator:
-                    r = (variant.reference_name, variant.start, variant.end,\
-                        variant.reference_bases, variant.alternate_bases)
-                    results.append(r)
+        c = 0
+        try:
+            for variant_set in variant_sets:
+                for reference_name in REFERENCE_NAMES:
+                    iterator = httpClient.search_variants(variant_set_id=variant_set.id,
+                    #iterator = httpClient.search_variants(variant_set_id='brca-hg38',
+                        #reference_name=reference_name, start=45000, end=50000)
+                        #reference_name="13", start=32315650, end=32315660)
+                        reference_name="13", start=0, end=500000)
+                    for variant in iterator:
+                        r = (variant.reference_name, variant.start, variant.end,\
+                            variant.reference_bases, variant.alternate_bases)
+                        results.append(r)
+        except RequestNonSuccessException as e:
+            c += 1
+            print(e)
+        print c
     return results
 
 @app.route('/app/')
@@ -186,7 +208,7 @@ def app2():
     BRCA Exchange (via GA4GH)."""
     # Query the 2 APIs and get data responses.
     g4results = _ga4gh_queries()
-    genotype_response, user_response, names_response, profilepic_response = _23andMe_queries(client_id, client_secret, redirect_uri, g4results)
+    genotype_response, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response = _23andMe_queries(client_id, client_secret, redirect_uri, g4results)
 
     # Process the data.
     user_request_success = False
@@ -198,6 +220,15 @@ def app2():
     profilepic_request_success = False
     if profilepic_response.status_code == 200:
         profilepic_request_success = True
+    family_request_success = False
+    if family_response.status_code == 200:
+        family_request_success = True
+    neanderthal_request_success = False
+    if neanderthal_response.status_code == 200:
+        neanderthal_request_success = True
+    relatives_request_success = False
+    if relatives_response.status_code == 200:
+        relatives_request_success = True
 
     if 'first_name' in names_response.json():
         account_first_name = names_response.json()['first_name']
@@ -207,25 +238,31 @@ def app2():
         account_last_name = names_response.json()['last_name']
     else:
         account_last_name = "last"
-
-    if genotype_response.status_code == 200:
-        if 'code' in request.args.to_dict():
-            code = request.args.to_dict()['code']
-        else:
-            code = None
-        return flask.render_template('app.html', page_header=PAGE_HEADER,
-            genotype_response_json=genotype_response.json(),
-            home_url=BASE_CLIENT_URL,
-            user_response_json=user_response.json(),
-            names_response_json=names_response.json(),
-            page_title=PAGE_HEADER, client_id=client_id, code=code,
-            g4results=g4results, user_request_success=user_request_success,
-            names_request_success=names_request_success,
-            profilepic_request_success=profilepic_request_success,
-            account_first_name=account_first_name,
-            account_last_name=account_last_name)
+    if 'code' in request.args.to_dict():
+        code = request.args.to_dict()['code']
     else:
-        genotype_response.raise_for_status()
+        code = None
+
+    genotype_request_success = False
+    if genotype_response.status_code == 200:
+        genotype_request_success = True
+    #else:
+    #    genotype_response.raise_for_status()
+    return flask.render_template('app.html', page_header=PAGE_HEADER,
+        genotype_response_json=genotype_response.json(),
+        home_url=BASE_CLIENT_URL,
+        user_response_json=user_response.json(),
+        names_response_json=names_response.json(),
+        page_title=PAGE_HEADER, client_id=client_id, code=code,
+        g4results=g4results, user_request_success=user_request_success,
+        names_request_success=names_request_success,
+        family_request_success=family_request_success,
+        neanderthal_request_success=neanderthal_request_success,
+        relatives_request_success=relatives_request_success,
+        profilepic_request_success=profilepic_request_success,
+        account_first_name=account_first_name,
+        genotype_request_success=genotype_request_success,
+        account_last_name=account_last_name)
 
 
 if __name__ == '__main__':
