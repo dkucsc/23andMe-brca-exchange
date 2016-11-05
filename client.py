@@ -8,7 +8,7 @@ import flask
 from flask import request
 from requests_oauthlib import OAuth2Session
 
-import ga4gh.client as g4client
+from ga4gh_client import client as g4client
 from ga4gh.exceptions import RequestNonSuccessException
 
 
@@ -188,10 +188,9 @@ def _ga4gh_queries():
             for variant_set in variant_sets:
                 for reference_name in REFERENCE_NAMES:
                     iterator = httpClient.search_variants(variant_set_id=variant_set.id,
-                    #iterator = httpClient.search_variants(variant_set_id='brca-hg38',
                         #reference_name=reference_name, start=45000, end=50000)
-                        #reference_name="13", start=32315650, end=32315660)
-                        reference_name="13", start=0, end=500000)
+                        reference_name=reference_name, start=32315650, end=32315660)
+                        #reference_name="13", start=0, end=500000)
                     for variant in iterator:
                         r = (variant.reference_name, variant.start, variant.end,\
                             variant.reference_bases, variant.alternate_bases)
@@ -200,14 +199,14 @@ def _ga4gh_queries():
             c += 1
             print(e)
         print c
-    return results
+    return (datasets, variant_sets, results)
 
 @app.route('/app/')
 def app2():
     """Represents our application, which makes use of 2 APIs: 23andMe, and
     BRCA Exchange (via GA4GH)."""
     # Query the 2 APIs and get data responses.
-    g4results = _ga4gh_queries()
+    datasets, variant_sets, g4results = _ga4gh_queries()
     genotype_response, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response = _23andMe_queries(client_id, client_secret, redirect_uri, g4results)
 
     # Process the data.
