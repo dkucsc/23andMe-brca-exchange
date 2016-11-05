@@ -8,7 +8,7 @@ import flask
 from flask import request
 from requests_oauthlib import OAuth2Session
 
-import ga4gh.client as g4client
+from ga4gh_client import client as g4client
 from ga4gh.exceptions import RequestNonSuccessException
 
 
