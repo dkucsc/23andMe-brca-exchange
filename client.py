@@ -130,13 +130,18 @@ def index():
 def _compute_locations(g, s):
     """Computes a more reasonable list of SNPs than the DEFAULT_SNPS above."""
     result = []
+    cross = []
     with open(s, 'r') as fh:
         for l in fh:
-            m = re.match(r'^(\d+)\s+(\.+)\s+(\.+)\s+(.+)$', l)
+            l = l.strip()
+            m = re.match(r'^(\d+)\s+(\w+)\s+(\w+)\s+(\d+)$', l)
             if m:
                 index, snp, ch, p = m.groups()
-                #print index, snp, ch, p
-    return ' '.join(DEFAULT_SNPS)
+                for r in g:
+                    if ch == r[0] and (p >= r[0]) and (p <= r[1]):
+                        cross.append(snp)
+    #return ' '.join(DEFAULT_SNPS + cross)
+    return cross
 
 
 def _23andMe_queries(client_id, client_secret, redirect_uri, g4results, s):
@@ -160,14 +165,14 @@ def _23andMe_queries(client_id, client_secret, redirect_uri, g4results, s):
                                     params={'locations': locations},
                                     headers=headers,
                                     verify=True)
-    genotype_response2 = requests.get("%s%s" % (BASE_API_URL, "/1/genotypes/SP1_FATHER_V3/SP1_FATHER_V3/"),
-                                    params={'locations': ' '.join(DEFAULT_SNPS)},
+    genotype_response2 = requests.get("%s%s" % (BASE_API_URL, "/1/demo/genotypes/SP1_FATHER_V4/"),
+                                    params={'locations': locations},
                                     headers=headers,
                                     verify=True)
     names_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/names/"),
                                     headers=headers,
                                     verify=True)
-    profilepic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/profile_picture/"),
+    profilepic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/profile_picture/SP1_FATHER_V4/"),
                                     headers=headers,
                                     verify=True)
     family_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/family_members/"),
@@ -198,15 +203,15 @@ def _ga4gh_queries():
         try:
             grch37 = filter(lambda x: x.id == 'brca-hg37', variant_sets)[0]
             variant_set = grch37
-            for reference_name in REFERENCE_NAMES:
-                iterator = httpClient.search_variants(variant_set_id=variant_set.id,
-                    #reference_name=reference_name, start=45000, end=50000)
-                    reference_name=reference_name, start=32315650, end=32315660)
-                    #reference_name="13", start=0, end=500000)
-                for variant in iterator:
-                    r = (variant.reference_name, variant.start, variant.end,\
-                        variant.reference_bases, variant.alternate_bases)
-                    results.append(r)
+            for variant_set in variant_sets:
+                for reference_name in REFERENCE_NAMES:
+                    iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, end=32889762, start=32889611)
+                        #reference_name=reference_name, start=32315650, end=32315660)
+                        #reference_name="13", start=0, end=500000)
+                    for variant in iterator:
+                        r = (variant.reference_name, variant.start, variant.end,\
+                            variant.reference_bases, variant.alternate_bases)
+                        results.append(r)
         except RequestNonSuccessException as e:
             c += 1
             print(e)
@@ -260,6 +265,10 @@ def app2():
         genotype_request_success = True
     #else:
     #    genotype_response.raise_for_status()
+
+    #for r in g4results:
+    #    for l in fh
+
     return flask.render_template('app.html', page_header=PAGE_HEADER,
         genotype_response_json=genotype_response.json(),
         home_url=BASE_CLIENT_URL,
