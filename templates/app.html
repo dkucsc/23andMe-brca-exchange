@@ -18,7 +18,7 @@
         </tr>
         {% for p in g4results %}
         <tr>
-            <td>{{p}}</td>
+            <td>{{p}}, id:</td>
         </tr>
         {% endfor %}
         <tr>
@@ -26,7 +26,7 @@
         </tr>
         {% for p in genotype_response_json %}
         <tr>
-            <td>cat: {{p.id}}</td>
+            <td>cat: {{p}}</td>
             <td>dog: {{p.rs12913832}}</td>
         </tr>
         {% endfor %}
