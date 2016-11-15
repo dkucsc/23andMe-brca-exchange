@@ -30,8 +30,8 @@ access_token = None
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = '1'
 
 # Pass in more scopes through the command line, or change these.
-DEFAULT_SNPS = ['rs12913832', 'rs3088053', 'rs1000068', 'rs206118', 'rs206115']
-DEFAULT_SCOPES = ['names', 'basic', 'email', 'ancestry', 'family_tree', 'relatives', 'analyses', 'haplogroups', 'phenotypes', 'genomes'] + DEFAULT_SNPS
+DEFAULT_SNPS = ['rs12913832', 'rs3088053', 'rs1000068', 'rs206118', 'rs206115', 'rs3094315', 'i3000001']
+DEFAULT_SCOPES = ['names', 'basic', 'email', 'analyses', 'genomes'] + DEFAULT_SNPS
 
 # The program will ask for a client_secret if you choose to not hardcode one
 # here.
@@ -106,7 +106,9 @@ def _compute_locations(g, s):
         with open(CACHE_LOCATION, 'wb') as fh:
             pickle.dump(cross, fh)
     print "Crosses: %s" % len(cross)
-    return cross if len(cross) > 0 else ' '.join(DEFAULT_SNPS)
+    #return cross if len(cross) > 0 else ' '.join(DEFAULT_SNPS)
+    #return cross + ' '.join(DEFAULT_SNPS) + scopes
+    return cross
 
 
 def _g4_queries():
@@ -126,7 +128,7 @@ def _g4_queries():
         variant_set = filter(lambda x: x.id == 'brca-hg37', variant_sets)[0]
         brca2_start = 32889611
         for reference_name in REFERENCE_NAMES:
-            iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, start=brca2_start, end=brca2_start+1000)
+            iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, start=brca2_start, end=brca2_start+2000)
             #iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, start=105598600, end=105598700)
                 #reference_name=reference_name, start=32315650, end=32315660)
                 #reference_name="13", start=0, end=500000)
@@ -142,7 +144,8 @@ def _g4_queries():
 datasets, variant_sets, g4results = _g4_queries()
 locations = _compute_locations(g4results, SNPS_DATA_FILE)
 print "Locations: %s" % locations
-scopes = options.scopes or DEFAULT_SCOPES
+scopes = options.scopes or (DEFAULT_SCOPES + locations)
+print "Scopes: %s" % scopes
 
 if not options.client_id:
     print "missing param: CLIENT_ID:"
@@ -213,7 +216,7 @@ def _23andMe_queries(client_id, client_secret, redirect_uri, s):
                                     headers=headers,
                                     verify=True)
     genotype_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/genotypes/SP1_MOTHER_V4/"),
-                                    params={'locations': locations},
+                                    params={'locations': " ".join(locations), 'format': 'embedded'},
                                     headers=headers,
                                     verify=True)
     genotype_response2 = requests.get("%s%s" % (BASE_API_URL, "/1/demo/genotypes/SP1_FATHER_V4/"),

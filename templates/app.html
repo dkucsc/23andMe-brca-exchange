@@ -24,7 +24,7 @@
         </tr>
         {% for p in g4results %}
         <tr>
-            <td>{{p}}</td>
+            {#<td>{{p}}</td>#}
         </tr>
         {% endfor %}
         <tr>
@@ -32,8 +32,8 @@
         </tr>
         {% for k, v in genotype_response_json.iteritems() %}
         <tr>
-            <td>cat: {{k}}</td>
-            <td>dog: {{v}}</td>
+            <td>{{k}}</td>
+            <td>{{v}}</td>
         </tr>
         {% endfor %}
         <tr>
@@ -41,8 +41,8 @@
         </tr>
         {% for k, v in genotype_response_json2.iteritems() %}
         <tr>
-            <td>cat: {{k}}</td>
-            <td>dog: {{v}}</td>
+            <td>{{k}}</td>
+            <td>{{v}}</td>
         </tr>
         {% endfor %}
         <tr>
@@ -55,6 +55,7 @@
         </tr>
         {% endfor %}
     </table>
+    <hr>
     <br>
         {% for k, v in user_response_json.iteritems() %}
             {% if k == "profiles" %}
@@ -64,21 +65,6 @@
             {% else %}
                 {{k}}: {{v}}
             {% endif %}
-        {% endfor %}
-    <br>
-        {% for k, v in names_response_json.iteritems() %}
-            Key: {{k}}
-            Value: {{v}}
-            {#
-            ID: {{p.id}}
-            First name: {{p.first_name}}
-            Last name: {{p.last_name}}
-            {% for u in p.profiles %}
-                ID: {{u.id}}
-                First name: {{u.first_name}}
-                Last name: {{u.last_name}}
-            {% endfor %}
-            #}
         {% endfor %}
 
 
