@@ -98,7 +98,7 @@ def _compute_locations_from_start(start=0, end=1234, reference_name="13", s=""):
                 index, snp, ch, p = row[0], row[1], row[2], row[3]
                 p = int(p)
                 if ch == reference_name and p > start and p < end:
-                    cross.append(snp)
+                    cross.append((snp, p))
     print "Crosses: %s" % len(cross)
     return cross# if len(cross) > 0 else ' '.join(DEFAULT_SNPS)
 
@@ -185,12 +185,22 @@ def variants():
     
     headers = {'Authorization': 'Bearer %s' % access_token}
     genotype_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/genotypes/"),
-                                    params={'locations': " ".join(locations), 'format': 'embedded'},
+                                    params={'locations': " ".join([x[0] for x in locations]), 'format': 'embedded'},
                                     headers=headers,
                                     verify=True)
-    
-    print(genotype_response.json())
-    print(variants)
+
+    for profile in genotype_response.json():
+        for call in profile['genotypes']:
+            for location in locations:
+                if call['location'] == location[0]:
+                    for variant in variants:
+                        if variant.start == location[1]:
+                            print("brca and 23andme have {}".format(location[0]))
+                            print(variant.info["Allele_Frequency"])
+                            print("Individual presented: " + call['call'])
+
+    #print(genotype_response.json())
+    #print(variants)
     return flask.jsonify({"23andme": genotype_response.json(), "g4": [json_format._MessageToJsonObject(v, True) for v in variants], "locations": locations, "query": {"start": start, "end": end, "reference_name": reference_name}})
 
 
