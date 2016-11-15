@@ -2,6 +2,7 @@ import getpass
 import logging
 import sys
 import re
+import pickle
 import csv
 import os
 from optparse import OptionParser
@@ -16,6 +17,7 @@ from ga4gh.exceptions import RequestNonSuccessException
 
 
 PORT = 5000
+CACHE_LOCATION = "G423andMe.cache"
 API_SERVER = 'api.23andme.com'
 BASE_CLIENT_URL = 'http://localhost:%s/' % PORT
 DEFAULT_REDIRECT_URI = '%sapp/' % BASE_CLIENT_URL
@@ -53,6 +55,7 @@ parser.add_option("-k", "--snps-data", dest='snps_data',
 
 (options, args) = parser.parse_args()
 
+
 DEBUG = options.debug
 
 BASE_API_URL = "https://%s" % options.t23andMe_api_server
@@ -80,21 +83,28 @@ def _compute_locations(g, s):
     :param g: G4 API query results.
     :param s: SNPs data file location.
     """
-    cross = []
-    found_header = False
-    with open(s, 'r') as fh:
-        reader = csv.reader(fh, delimiter='\t')
-        for row in reader:
-            if not row[0].startswith('#'):
-                if not found_header:
-                    found_header = True
-                    continue
-                index, snp, ch, p = row[0], row[1], row[2], row[3]
-                p = int(p)
-                for r in g:
-                    if ch == r[0] and (p >= r[1]) and (p <= r[2]):
-                    #if ch == r.info['Chr'].values[0].string_value and (p >= r.start) and (p <= r.end):
-                        cross.append(snp)
+    print "Length of G4 query results: %s" % len(g)
+    if os.path.exists(CACHE_LOCATION):
+        with open(CACHE_LOCATION, 'rb') as fh:
+            cross = pickle.load(fh)
+    else:
+        cross = []
+        found_header = False
+        with open(s, 'r') as fh:
+            reader = csv.reader(fh, delimiter='\t')
+            for row in reader:
+                if not row[0].startswith('#'):
+                    if not found_header:
+                        found_header = True
+                        continue
+                    index, snp, ch, p = row[0], row[1], row[2], row[3]
+                    p = int(p)
+                    for r in g:
+                        if ch == r[0] and (p >= r[1]) and (p <= r[2]):
+                        #if ch == r.info['Chr'].values[0].string_value and (p >= r.start) and (p <= r.end):
+                            cross.append(snp)
+        with open(CACHE_LOCATION, 'wb') as fh:
+            pickle.dump(cross, fh)
     print "Crosses: %s" % len(cross)
     return cross if len(cross) > 0 else ' '.join(DEFAULT_SNPS)
 
@@ -110,10 +120,10 @@ def _g4_queries():
     datasets = list(httpClient.search_datasets())
     results = list()
     for dataset in datasets:
-        # There should be 3 variant sets.
+        # There should be 3 variant sets; we're only concerned with hg37 for
+        # now though.
         variant_sets = list(httpClient.search_variant_sets(dataset_id=dataset.id))
-        grch37 = filter(lambda x: x.id == 'brca-hg37', variant_sets)[0]
-        variant_set = grch37
+        variant_set = filter(lambda x: x.id == 'brca-hg37', variant_sets)[0]
         brca2_start = 32889611
         for reference_name in REFERENCE_NAMES:
             iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, start=brca2_start, end=brca2_start+1000)
@@ -131,6 +141,7 @@ def _g4_queries():
 
 datasets, variant_sets, g4results = _g4_queries()
 locations = _compute_locations(g4results, SNPS_DATA_FILE)
+print "Locations: %s" % locations
 scopes = options.scopes or DEFAULT_SCOPES
 
 if not options.client_id:
@@ -201,7 +212,7 @@ def _23andMe_queries(client_id, client_secret, redirect_uri, s):
     user_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/user/"),
                                     headers=headers,
                                     verify=True)
-    genotype_response = requests.get("%s%s" % (BASE_API_URL, "/1/genotype/"),
+    genotype_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/genotypes/SP1_MOTHER_V4/"),
                                     params={'locations': locations},
                                     headers=headers,
                                     verify=True)
@@ -224,7 +235,7 @@ def _23andMe_queries(client_id, client_secret, redirect_uri, s):
     relatives_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/relatives/"),
                                     headers=headers,
                                     verify=True)
-    return genotype_response, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response
+    return genotype_response, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response, genotype_response2
 
 
 @app.route('/app/')
@@ -234,7 +245,7 @@ def app2():
     # Query the 2 APIs and get data responses.
     s = SNPS_DATA_FILE
     global g4results
-    genotype_response, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response = _23andMe_queries(client_id, client_secret, redirect_uri, s)
+    genotype_response, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response, genotype_response2 = _23andMe_queries(client_id, client_secret, redirect_uri, s)
 
     # Process the data.
     user_request_success = False
@@ -274,6 +285,11 @@ def app2():
         genotype_request_success = True
     #else:
     #    genotype_response.raise_for_status()
+    genotype_request_success2 = False
+    if genotype_response2.status_code == 200:
+        genotype_request_success2 = True
+    #else:
+    #    genotype_response.raise_for_status()
 
     def _format_g4results(g):
         o = []
@@ -285,10 +301,9 @@ def app2():
 
     return flask.render_template('app.html', page_header=PAGE_HEADER,
         genotype_response_json=genotype_response.json(),
-        home_url=BASE_CLIENT_URL,
-        user_response_json=user_response.json(),
-        names_response_json=names_response.json(),
-        page_title=PAGE_HEADER, client_id=client_id, code=code,
+        home_url=BASE_CLIENT_URL, user_response_json=user_response.json(),
+        names_response_json=names_response.json(), page_title=PAGE_HEADER,
+        client_id=client_id, code=code, g4reference_name=g4results[0][0],
         g4results=g4results, user_request_success=user_request_success,
         names_request_success=names_request_success,
         family_request_success=family_request_success,
@@ -297,7 +312,9 @@ def app2():
         profilepic_request_success=profilepic_request_success,
         account_first_name=account_first_name,
         genotype_request_success=genotype_request_success,
-        account_last_name=account_last_name)
+        account_last_name=account_last_name,
+        genotype_response_json2=genotype_response2.json(),
+        genotype_request_success2=genotype_request_success2)
 
 
 if __name__ == '__main__':
