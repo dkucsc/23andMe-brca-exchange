@@ -23,28 +23,30 @@
     <p>Click <a href="{{api_results_url}}">here</a> to see equivalent results in JSON format.  Click <a href="{{app_home_url}}">here</a> to go to the homepage.
     <table border=1>
         <tr>
-            <th colspan=4>genotype responses</td>
+            <th colspan=5>genotype responses</td>
         </tr>
         {% for gr in genotype_responses %}
             <tr>
-                <th colspan=4>genotype response</td>
+                <th colspan=5>genotype response</td>
             </tr>
-            {% for k, v in gr[1].iteritems() %}
+            {% for k, v in gr[2].iteritems() %}
             <tr>
                 <td>Request success: {{gr[0]}}</td>
                 <td>{{k}}</td>
                 <td>{{v}}</td>
-                <td>{{gr[2]}}</td>
+                <td>{{gr[1]}}</td>
+                <td>{{gr[3]}}</td>
             </tr>
             {% endfor %}
         {% endfor %}
         <tr>
-            <th colspan=4>names response</td>
+            <th colspan=5>names response</td>
         </tr>
         {% for k, v in names_response_json.iteritems()  %}
         <tr>
             <td>{{k}}</td>
             <td>{{v}}</td>
+            <td></td>
             <td></td>
             <td></td>
         </tr>

@@ -304,20 +304,20 @@ def app2():
             end=BRCA2_START+1000, reference_name=reference_name))
         for gr in genotype_responses:
             profile = gr.json()
-            r = None
+            r = list()
             if 'genotypes' in profile:
                 for call in profile['genotypes']:
                     for location in locations_augmented:
                         if call['location'] == location[0]:
                             for variant in variants:
                                 if variant.start == location[1]:
-                                    r = ("brca and 23andme have {}".format(location[0]),
+                                    r.append(("brca and 23andme have {}".format(location[0]),
                                         variant.info["Allele_Frequency"],
-                                        "Individual presented: " + call['call'])
+                                        "Individual presented: " + call['call']))
             if gr.status_code == 200:
-                temp.append((True, gr.json(), r))
+                temp.append((True, reference_name, gr.json(), r))
             else:
-                temp.append((False, gr.json(), r))
+                temp.append((False, reference_name, gr.json(), r))
     genotype_responses = temp
 
     # Reformat the genotype_responses list to include HTTP success status code;
