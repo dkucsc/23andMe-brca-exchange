@@ -26,7 +26,6 @@ from ga4gh.exceptions import RequestNonSuccessException
 
 
 PORT = 5000
-CACHE_LOCATION = "G423andMe.cache"
 API_SERVER = 'api.23andme.com'
 BASE_CLIENT_URL = 'http://localhost:%s/' % PORT
 DEFAULT_APP_REDIRECT_URI = '%sapp/' % BASE_CLIENT_URL
@@ -34,6 +33,7 @@ DEFAULT_API_REDIRECT_URI = '%svariants/search/' % BASE_CLIENT_URL
 PAGE_HEADER = "23andMe + GA4GH"
 #REFERENCE_NAMES = [str(x) for x in range(1, 23)] + ['X', 'Y', 'MT']
 REFERENCE_NAMES = ["13", "17"]
+BRCA2_START = 32889611
 access_token = None
 
 # So we don't get errors if the redirect uri is not https.
@@ -90,7 +90,7 @@ def _23andMe_queries(client_id, client_secret, app_redirect_uri):
     genotype_responses = []
     for profile in names_response.json()['profiles']:
         genotype_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/genotypes/%s/" % profile['id']),
-                                        params={'locations': locations, 'format': 'embedded'},
+                                        params={'locations': ' '.join(locations), 'format': 'embedded'},
                                         headers=headers,
                                         verify=True)
         genotype_responses.append(genotype_response)
@@ -121,9 +121,8 @@ def _g4_queries():
         # now though.
         variant_sets = list(httpClient.search_variant_sets(dataset_id=dataset.id))
         variant_set = filter(lambda x: x.id == 'brca-hg37', variant_sets)[0]
-        brca2_start = 32889611
         for reference_name in REFERENCE_NAMES:
-            iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, start=brca2_start, end=brca2_start+2000)
+            iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, start=BRCA2_START, end=BRCA2_START+2000)
             #iterator = httpClient.search_variants(variant_set_id=variant_set.id, reference_name=reference_name, start=105598600, end=105598700)
                 #reference_name=reference_name, start=32315650, end=32315660)
                 #reference_name="13", start=0, end=500000)
@@ -142,9 +141,8 @@ def _compute_locations_from_snps_file(start=41196311, end=41196314, reference_na
     It returns the rsIDs from the given SNPs file that are associated with the
     given reference name, and has a position that falls within the given
     range."""
-    print("looking for snps")
-    print(start, end, reference_name)
     cross = []
+    cross_augmented = []
     found_header = False
     with open(s, 'r') as fh:
         reader = csv.reader(fh, delimiter='\t')
@@ -155,11 +153,13 @@ def _compute_locations_from_snps_file(start=41196311, end=41196314, reference_na
                     continue
                 index, snp, ch, p = row[0], row[1], row[2], int(row[3])
                 if ch == reference_name and p > start and p < end:
-                    cross.append((snp, p))
+                    cross.append(snp)
+                    cross_augmented.append((snp, p))
     print "Crosses: %s" % len(cross)
     #return cross if len(cross) > 0 else ' '.join(DEFAULT_SNPS)
     #return cross + ' '.join(DEFAULT_SNPS) + scopes
-    return " ".join([x[0] for x in cross])
+    #return " ".join([x[0] for x in cross])
+    return cross, cross_augmented
 
 
 if not options.snps_data:
@@ -167,12 +167,12 @@ if not options.snps_data:
     sys.exit(1)
 SNPS_DATA_FILE = options.snps_data
 
-locations = _compute_locations_from_snps_file(start=32889611, end=32889611+2000, s=SNPS_DATA_FILE)
+locations, locations_augmented = _compute_locations_from_snps_file(start=32889611, end=32889611+2000, s=SNPS_DATA_FILE)
 #locations = _compute_locations_from_snps_file(start=41196311, end=41277500, s=SNPS_DATA_FILE)
 #locations = _compute_locations_from_snps_file(start=41196311, end=41196314, s=SNPS_DATA_FILE)
-print "Locations: %s" % locations
-scopes = options.scopes or (DEFAULT_SCOPES + locations.split())
-print "Scopes: %s" % scopes
+print "Locations: %s %s" % (len(locations), locations)
+scopes = options.scopes or (DEFAULT_SCOPES + locations)
+print "Scopes: %s %s" % (len(scopes), scopes)
 
 DEBUG = options.debug
 
@@ -213,8 +213,6 @@ def index():
     #end = int(flask.request.args.get('end', 32889611 + 1000))
     #reference_name = str(flask.request.args.get('reference_name', "13"))
     #ttam_oauth = OAuth2Session(client_id, redirect_uri="http://localhost:5000/app/?start={}&end={}&reference_name={}".format(start, end, reference_name),
-    scopes = options.scopes or (DEFAULT_SCOPES + locations.split())
-    print "Scopes: %s" % scopes
     ttam_oauth = OAuth2Session(client_id, redirect_uri=app_redirect_uri, scope=scopes)
     auth_url, state = ttam_oauth.authorization_url(API_AUTH_URL)
     return flask.render_template('index.html', auth_url=auth_url,
@@ -232,15 +230,18 @@ def variants_search_endpoint():
     g4 = g4client.HttpClient(API_SERVER_GA4GH)
     # could take a long time for large regions beware, maybe kick out if a too
     # large region is requested
-    variants = list(g4.search_variants(variant_set_id="brca-hg37", start=start, end=end, reference_name=reference_name))
+    variants = list(g4.search_variants(variant_set_id="brca-hg37", start=start,
+        end=end, reference_name=reference_name))
 
-    locations = _compute_locations_from_snps_file(start=start, end=end, reference_name=reference_name, s=SNPS_DATA_FILE)
+    locations, _ = _compute_locations_from_snps_file(start=start, end=end,
+        reference_name=reference_name, s=SNPS_DATA_FILE)
 
     print(locations)
     global access_token
     if not access_token:
         ttam_oauth = OAuth2Session(client_id, redirect_uri=api_redirect_uri)
-        token_dict = ttam_oauth.fetch_token(API_TOKEN_URL, client_secret=client_secret,                                            authorization_response=request.url)
+        token_dict = ttam_oauth.fetch_token(API_TOKEN_URL,
+            client_secret=client_secret, authorization_response=request.url)
 
         access_token = token_dict['access_token']
     
@@ -263,7 +264,7 @@ def app2():
     Exchange (via GA4GH)."""
     genotype_responses, user_response, names_response, profilepic_response, family_response, neanderthal_response, relatives_response = _23andMe_queries(client_id, client_secret, app_redirect_uri)
 
-    # Process the data.
+    # Compute some context data for later rendering.
     user_request_success = False
     if user_response.status_code == 200:
         user_request_success = True
@@ -282,7 +283,6 @@ def app2():
     #relatives_request_success = False
     #if relatives_response.status_code == 200:
     #    relatives_request_success = True
-
     if 'first_name' in names_response.json():
         account_first_name = names_response.json()['first_name']
     else:
@@ -296,41 +296,33 @@ def app2():
     else:
         code = None
 
+    # The algorithm that computes useful results with G4 and 23andMe data.
     temp = []
-    for gr in genotype_responses:
-        if gr.status_code == 200:
-            temp.append((True, gr))
-        else:
-            #genotype_response.raise_for_status()
-            temp.append((False, gr))
-    genotype_responses = temp
-
-    def _format_g4results(g):
-        o = []
-        for r in g:
-            r = (r.id, r.names, r.reference_bases, r.reference_name, r.start, r.end, r.calls, r.info['Hg37_Start'].values[0].number_value, r.info['Hg37_End'].values[0].number_value, r.info['AFR_Allele_frequency_1000_Genomes'].values[0].string_value, r.info['EUR_Allele_frequency_1000_Genomes'].values[0].string_value, r.info['Chr'].values[0].string_value, r.info['Pathogenicity_expert'].values[0].string_value, r.info['Ref'].values[0].string_value, r.info['Alt'].values[0].string_value, r.info['Pos'].values[0].string_value, r.info['Allele_Frequency'].values[0].string_value, r.info['Gene_Symbol'].values[0].string_value)
-            o.append(r)
-        return o
-    #g4results = _format_g4results(g4results)
-
     g4 = g4client.HttpClient(API_SERVER_GA4GH)
-    brca2_start = 32889611
     for reference_name in REFERENCE_NAMES:
-        variants = list(g4.search_variants(variant_set_id="brca-hg37", start=brca2_start,
-            end=brca2_start+1000, reference_name=reference_name))
+        variants = list(g4.search_variants(variant_set_id="brca-hg37", start=BRCA2_START,
+            end=BRCA2_START+1000, reference_name=reference_name))
         for gr in genotype_responses:
-            profile = gr[1].json()
+            profile = gr.json()
+            r = None
             if 'genotypes' in profile:
                 for call in profile['genotypes']:
-                    for location in locations:
+                    for location in locations_augmented:
                         if call['location'] == location[0]:
                             for variant in variants:
                                 if variant.start == location[1]:
-                                    print("brca and 23andme have {}".format(location[0]))
-                                    print(variant.info["Allele_Frequency"])
-                                    print("Individual presented: " + call['call'])
+                                    r = ("brca and 23andme have {}".format(location[0]),
+                                        variant.info["Allele_Frequency"],
+                                        "Individual presented: " + call['call'])
+            if gr.status_code == 200:
+                temp.append((True, gr.json(), r))
+            else:
+                temp.append((False, gr.json(), r))
+    genotype_responses = temp
 
-    genotype_responses = [(x[0], x[1].json()) for x in genotype_responses]
+    # Reformat the genotype_responses list to include HTTP success status code;
+    # and also, turn the second element into JSON (instead of a 'Request'
+    # object).
 
     return flask.render_template('app.html', page_header=PAGE_HEADER,
         genotype_responses=genotype_responses,
@@ -346,6 +338,15 @@ def app2():
         #profilepic_request_success=profilepic_request_success,
         account_first_name=account_first_name,
         account_last_name=account_last_name)
+
+
+def _format_g4results(g):
+    o = []
+    for r in g:
+        r = (r.id, r.names, r.reference_bases, r.reference_name, r.start, r.end, r.calls, r.info['Hg37_Start'].values[0].number_value, r.info['Hg37_End'].values[0].number_value, r.info['AFR_Allele_frequency_1000_Genomes'].values[0].string_value, r.info['EUR_Allele_frequency_1000_Genomes'].values[0].string_value, r.info['Chr'].values[0].string_value, r.info['Pathogenicity_expert'].values[0].string_value, r.info['Ref'].values[0].string_value, r.info['Alt'].values[0].string_value, r.info['Pos'].values[0].string_value, r.info['Allele_Frequency'].values[0].string_value, r.info['Gene_Symbol'].values[0].string_value)
+        o.append(r)
+    return o
+#g4results = _format_g4results(g4results)
 
 
 if __name__ == '__main__':
