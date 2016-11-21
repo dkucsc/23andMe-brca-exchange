@@ -1,6 +1,13 @@
 """
+An example application which integrates 23andMe data with data from BRCA
+Exchange, via the GA4GH API.
+
+The main 
+
 What was done,
 what we plan to do
+- Don't hardcode demo user
+- Document intersection algorithm
 TODOs
 """
 
@@ -97,12 +104,6 @@ def _23andMe_queries(client_id, client_secret, app_redirect_uri):
     user_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/user/"),
                                     headers=headers,
                                     verify=True)
-    #profilepic_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/profile_picture/SP1_FATHER_V4/"),
-    #                                headers=headers,
-    #                                verify=True)
-    #family_response = requests.get("%s%s" % (BASE_API_URL, "/1/demo/family_members/"),
-    #                                headers=headers,
-    #                                verify=True)
     return genotype_responses, user_response, names_response, None, None, None, None
 
 
@@ -209,10 +210,6 @@ app.config['SECRET_KEY'] = 'abc'    # May not need this here?  It wasn't there
 def index():
     """Here, we authenticate the user before transitioning to the app.  There
     should be no way of getting to the app without this step."""
-    #start = int(flask.request.args.get('start', 32889611))
-    #end = int(flask.request.args.get('end', 32889611 + 1000))
-    #reference_name = str(flask.request.args.get('reference_name', "13"))
-    #ttam_oauth = OAuth2Session(client_id, redirect_uri="http://localhost:5000/app/?start={}&end={}&reference_name={}".format(start, end, reference_name),
     ttam_oauth = OAuth2Session(client_id, redirect_uri=app_redirect_uri, scope=scopes)
     auth_url, state = ttam_oauth.authorization_url(API_AUTH_URL)
     return flask.render_template('index.html', auth_url=auth_url,
@@ -221,22 +218,22 @@ def index():
 
 @app.route('/variants/search/')
 def variants_search_endpoint():
+    """Implements the variants_search API endpoint, while incorporating 23andMe
+    results, if available."""
+    # Grab some arguments.
     flask.session['23code'] = flask.request.args.get('code')
     start = int(flask.request.args.get('start', 32889611))
     end = int(flask.request.args.get('end', 32889611 + 1000))
     reference_name = str(flask.request.args.get('reference_name', "13"))
     
-    # Get GA4GH variants
+    # Perform GA4GH query.
     g4 = g4client.HttpClient(API_SERVER_GA4GH)
-    # could take a long time for large regions beware, maybe kick out if a too
-    # large region is requested
     variants = list(g4.search_variants(variant_set_id="brca-hg37", start=start,
         end=end, reference_name=reference_name))
 
     locations, _ = _compute_locations_from_snps_file(start=start, end=end,
         reference_name=reference_name, s=SNPS_DATA_FILE)
 
-    print(locations)
     global access_token
     if not access_token:
         ttam_oauth = OAuth2Session(client_id, redirect_uri=api_redirect_uri)
@@ -296,7 +293,13 @@ def app2():
     else:
         code = None
 
-    # The algorithm that computes useful results with G4 and 23andMe data.
+    # An algorithm that computes useful results with G4 and 23andMe data.
+    #
+    # The main (and valuable) thing computed here.is, at the end, stored in the
+    # 'r' variable; a list of tuples, all of the same length of 4.
+    #
+    # Each tuple's first entry is a boolean indicating success or failure of
+    # individual API requests.
     temp = []
     g4 = g4client.HttpClient(API_SERVER_GA4GH)
     for reference_name in REFERENCE_NAMES:
@@ -311,18 +314,22 @@ def app2():
                         if call['location'] == location[0]:
                             for variant in variants:
                                 if variant.start == location[1]:
-                                    r.append(("brca and 23andme have {}".format(location[0]),
-                                        variant.info["Allele_Frequency"],
-                                        "Individual presented: " + call['call']))
+                                    # TODO: We _should_ iterate over the
+                                    # variant.info['blah'] thing, but for now
+                                    # just use [0].
+                                    l = len(variant.info["Allele_Frequency"])
+                                    if l > 0:
+                                        v = variant.info["Allele_Frequency"][0]
+                                    else:
+                                        v = "(Nothing about allele frequency)"
+                                    e = ("Both have {}".format(location[0]), v,
+                                        "Individual presented: " + call['call'])
+                                    r.append(e)
             if gr.status_code == 200:
                 temp.append((True, reference_name, gr.json(), r))
             else:
                 temp.append((False, reference_name, gr.json(), r))
     genotype_responses = temp
-
-    # Reformat the genotype_responses list to include HTTP success status code;
-    # and also, turn the second element into JSON (instead of a 'Request'
-    # object).
 
     return flask.render_template('app.html', page_header=PAGE_HEADER,
         genotype_responses=genotype_responses,
@@ -332,10 +339,6 @@ def app2():
         user_request_success=user_request_success,
         names_request_success=names_request_success,
         api_results_url="http://localhost:5000/variants/search",
-        #family_request_success=family_request_success,
-        #neanderthal_request_success=neanderthal_request_success,
-        #relatives_request_success=relatives_request_success,
-        #profilepic_request_success=profilepic_request_success,
         account_first_name=account_first_name,
         account_last_name=account_last_name)
 

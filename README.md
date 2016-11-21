@@ -1,6 +1,6 @@
 # 23andMe-brca-exchange
 
-This is an example web application for combining the results of 23andMe with that of BRCA Exchange.
+An example web application for combining the results of 23andMe with that of BRCA Exchange.
 
 23andMe is used to provide personal genomic results, and this service cross-references the information with that of BRCA Exchange.  You can use this to, say, tell if you're at particular risk of breast cancer.
 

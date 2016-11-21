@@ -7,13 +7,14 @@
 	<script>
 	    window.onload = function () {
 		var ttam = TTAM('{{client_id}}');
-		ttam.connectButton('wrapper', ["basic", "genomes", "names", "analyses"]);
+		ttam.connectButton('23andMe_connect_button', ["basic", "genomes", "names", "analyses"]);
 	    };
 	</script>
     </head>
 
     <body>
-        <div style='width:700px;margin:auto;'>
+        {#<div style='width:700px;margin:auto;'>#}
+        <div style='width:80%;margin:auto;'>
         {% block body %}
         {% endblock %}
         </div>
